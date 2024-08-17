@@ -171,6 +171,7 @@ chat-app/
 
 ## Future Improvements
 
+- **More AI Models!** Working on adding chat functionality for more AI models
 - **WebSocket Integration:** Upgrade the application to use WebSockets for real-time messaging instead of relying solely on HTTP requests.
 - **User Authentication:** Add user authentication to allow multiple users to maintain separate chat histories.
 - **Message Encryption:** Implement message encryption for enhanced security in chat communications.
