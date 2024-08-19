@@ -1,17 +1,46 @@
 const express = require('express');
+const axios = require('axios');
+const app = express();
+const http = require('http');
+const server = http.createServer(app);
+const { Server } = require("socket.io");
+const {SendPrompt} = require('./APIcall');
+const {saveConversationToDatabase} = require('./savetoHistory');
+
+const io = new Server(server, {
+  cors: {
+    origin: "http://localhost:3000",
+  }
+});
 const dotenv = require('dotenv');
 const mongoose = require('mongoose');
 const cors = require('cors');
-
-const app = express();
-const PORT = process.env.PORT || 5000;; // Your backend port
-
 dotenv.config();
 
 
 app.use(cors()); // for connecting different ports 
 
 app.use(express.json());
+
+const PORT = process.env.PORT || 8080; // Your backend port
+
+io.on('connection', (socket) => {
+  socket.on('userMessage', async (PromptHistory) => {
+
+    try{
+    const outputText = await SendPrompt(PromptHistory);  // Use your API call here
+    const assistantMessage = { role: 'assistant', content: [{ text: outputText }] };
+    console.log(assistantMessage);
+    socket.emit('AIresponse', assistantMessage);
+    const updatedPromptHistory = [...PromptHistory, assistantMessage];
+    await saveConversationToDatabase(updatedPromptHistory);
+    }
+    catch(err){
+      console.error('Error handling user message:', err);
+    }
+  });
+});
+
 
 
 const modelIdHaiku = 'anthropic.claude-3-haiku-20240307-v1:0';
@@ -34,18 +63,6 @@ const ClaudeChat = new mongoose.Schema({
 
 const ClaudeHistory = mongoose.model('ClaudeHistory', ClaudeChat);
 
-// export async function ConnnecttoDB(){
-//   try {
-//     await mongoose.connect('mongodb://localhost:27017/AIChatHistory', {
-//       useNewUrlParser: true,
-//       useUnifiedTopology: true
-//     });
-//     console.log('Database connected successfully');
-//   }
-//   catch (err){
-//     console.log("Database Connection error: ", err);
-//   }
-// }
 
 app.post('/api/saveHistory', async (req, res) => {
   const modelIdHaiku = 'anthropic.claude-3-haiku-20240307-v1:0';
@@ -81,30 +98,8 @@ app.get('/history', async (req, res)=>{
     }
 });
 
+server.listen(PORT, () => {
+  console.log(`listening on ${PORT}`);
+});
 
-
-// export async function FetchHistory(hist) {
-
-//   if (!hist || !Array.isArray(hist)) {
-//     console.error('Invalid history data');
-//     return;
-//   }
-//   const modelIdHaiku = 'anthropic.claude-3-haiku-20240307-v1:0';
-
-//   const updatedhist = new ClaudeHistory({
-//     model_name: modelIdHaiku,
-//     history: hist
-//   })
-
-//   try {
-//     await updatedhist.save();
-//     console.log("History added Successfully");
-//   }
-//   catch (err) {
-//     console.log("History updation error:", err);
-//   }
-
-// }
-
-
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

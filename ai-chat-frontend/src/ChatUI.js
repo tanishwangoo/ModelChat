@@ -2,10 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { Layout, Row, Col, Input, Button, Avatar, Card, Typography } from 'antd';
 import { UserOutlined } from '@ant-design/icons';
 import './ChatUI.css';
-import { SendPrompt } from "./APIcall";
+// import { SendPrompt } from "../../ai-chat-backend/APIcall";
+import axios from 'axios';
+import { io } from 'socket.io-client';
+const socket = io('http://localhost:5000');
+
 // import { FetchHistory} from '../../backend/chatHstory';
 
-import axios from 'axios';
+
 
 
 const { Header, Content, Footer } = Layout;
@@ -16,68 +20,66 @@ function ChatApp() {
     const [promptHistory, setpromptHistory] = useState([]);
     const [inputValue, setInputValue] = useState('');
 
-    useEffect(() => {
-        const fetchLastHist = async()=>{
-            try{
+    useEffect(() => { // fetching latest history is fine for HTTP reqs
+        const fetchLastHist = async () => {
+            try {
                 const response = await axios.get('http://localhost:5000/history');
                 if (response.data.length > 0) {
                     const fetchedHistory = response.data[0].history; // Get the history array
                     const newMessages = fetchedHistory.map((item) => ({
                         role: item.role,
                         content: item.content,
-                      }));
-                  
-                      // Set the messages state once with the new messages
-                      return newMessages;
-                      setMessages((prevMessages) => [...prevMessages, ...newMessages]);
-                  }
+                    }));                   
+                    return newMessages;
+                }
             }
             catch (err) {
                 console.error('Error fetching chat history:', err);
             }
         };
 
-        const changingmessages = async()=>{
+        const changingmessages = async () => {
             const newMessages = await fetchLastHist();
-            setMessages(newMessages);   
+            if (Array.isArray(newMessages)) {
+                setMessages(newMessages); // Spread the newMessages into prevMessages
+            }
         }
-        
+
         changingmessages();
+
+
+        socket.on('AIresponse', (AImessage) => {
+            console.log(AImessage);
+            setMessages((prevMessages) => [...prevMessages, AImessage]); // Add AI message to the state
+        });
+        return () => {
+            socket.off('AIresponse');
+        };
     }, []);
 
     const handleSendMessage = async () => {
-
         if (inputValue.trim() !== '') {
             const userMessage = { role: 'user', content: [{ text: inputValue }] };
-            setMessages((prevMessages) => [...prevMessages, userMessage]);
-
-            const newPromptHistory = [...messages, userMessage];// for sending to backend
+            setMessages((prevMessages) => [...prevMessages, userMessage]); 
+            const newMessages = [...messages, userMessage];
+            socket.emit('userMessage', newMessages);
             setInputValue('');
-
             // Get the response from the assistant
-            const outputText = await SendPrompt(newPromptHistory);
-            const assistantMessage = { role: 'assistant', content: [{ text: outputText }] };
-            setMessages((prevMessages) => [...prevMessages, assistantMessage]);
 
-            const updatedPromptHistory = [...newPromptHistory, assistantMessage];
-
-            // Save the full conversation to the database
-
-            try {
-                // Send history to backend to save
-                await axios.post('http://localhost:5000/api/saveHistory', updatedPromptHistory);
-                console.log('History saved successfully');
-            }
-            catch (error) {
-                console.error('Error saving history:', error);
-            }
+            // socket.on('AIresponse', (AImessage) => {
+            //     console.log(AImessage);
+            //     // Add the assistant's message to the messages array
+            //     setMessages((prevMessages) => {
+            //         const newMessages = [...prevMessages, AImessage];
+            //         return newMessages; // Update the state with the new message
+            //     });
+            // });
         }
     };
 
     const handleInputChange = (e) => {
         setInputValue(e.target.value);
     };
-
     return (
         <Layout style={{ height: '100vh' }}>
             <Header style={{ color: 'white', textAlign: 'center', fontSize: '24px' }}>
@@ -95,17 +97,19 @@ function ChatApp() {
                     </Col>
                     <Col span={18} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                         <div className="chat-window" style={{ flexGrow: 1, overflowY: 'auto', padding: '10px', backgroundColor: '#f5f5f5', borderRadius: '5px' }}>
-                            {messages.map((message, index) => (
-                                <Card
-                                    key={index}
-                                    className={`chat-message ${message.role === 'user' ? 'user-message' : 'bot-message'}`}
-                                    bordered={false}
-                                >
-                                    {message.content.map((item, idx) => (
-                                        <p key={idx}>{item.text}</p>
-                                    ))}
-                                </Card>
-                            ))}
+                            {Array.isArray(messages) && messages.length > 0 ? (
+                                messages.map((message, index) => (
+                                    <Card
+                                        key={index}
+                                        className={`chat-message ${message.role === 'user' ? 'user-message' : 'bot-message'}`}
+                                        bordered={false}
+                                    >
+                                        {message.content.map((item, idx) => (
+                                            <p key={idx}>{item.text}</p>
+                                        ))}
+                                    </Card>
+                                ))
+                            ):(<></>)}
                         </div>
                         <div className="input-container" style={{ marginTop: '20px', display: 'flex' }}>
                             <Input
